@@ -8,7 +8,7 @@ This Terraform environment sets up the development-stage infrastructure for the 
 ## Project Highlights
 
 - VPC with NAT Gateway and subnetting across three AZs
-- EKS cluster (v1.29+) with public endpoint access
+- EKS cluster (v1.33) with public endpoint access
 - ECR and Secrets Manager provisioning
 - IAM roles for GitHub OIDC authentication
 
