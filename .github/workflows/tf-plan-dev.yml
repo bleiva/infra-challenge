@@ -1,0 +1,59 @@
+name: "[DEV] Terraform Plan"
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'tf/**/*.tf'
+      - 'tf/**/*.tfvars'
+  workflow_dispatch:
+
+jobs:
+  terraform-plan:
+    name: tf plan dev
+    runs-on: ubuntu-latest
+    environment: dev
+
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.1
+
+      - name: Terraform Init
+        run: terraform -chdir=tf/envs/dev init
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform -chdir=tf/envs/dev plan -var-file=dev.tfvars -no-color > plan.txt
+          cat plan.txt
+
+      - name: Comment PR with plan output
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('plan.txt', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### 📦 Terraform Plan Output\n\`\`\`\n${plan.substring(0, 65000)}\n\`\`\``
+            });

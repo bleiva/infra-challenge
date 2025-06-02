@@ -1,0 +1,87 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "GeneralTerraformAccess",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:*",
+                "eks:*",
+                "s3:*",
+                "autoscaling:*",
+                "cloudwatch:*",
+                "logs:*",
+                "kms:*",
+                "secretsmanager:*",
+                "cloudformation:DescribeStacks",
+                "sts:GetCallerIdentity",
+                "ssm:GetParameter",
+                "ssm:GetParameters",
+                "ssm:GetParameterHistory",
+                "iam:GetRole",
+                "iam:ListRoles",
+                "iam:ListAttachedRolePolicies",
+                "iam:GetPolicy",
+                "iam:GetPolicyVersion",
+                "iam:PutRolePolicy",
+                "iam:DeleteRolePolicy",
+                "iam:AttachRolePolicy",
+                "iam:DetachRolePolicy",
+                "iam:CreateRole",
+                "iam:DeleteRole",
+                "iam:ListRolePolicies",
+                "iam:TagOpenIDConnectProvider",
+                "iam:CreateOpenIDConnectProvider",
+                "iam:GetOpenIDConnectProvider",
+                "iam:DeleteOpenIDConnectProvider",
+                "iam:ListPolicyVersions",
+                "iam:ListInstanceProfilesForRole",
+                "iam:DeletePolicy",
+                "iam:CreatePolicy",
+                "iam:TagPolicy",
+                "iam:UpdateAssumeRolePolicy"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "SafePassRole",
+            "Effect": "Allow",
+            "Action": "iam:PassRole",
+            "Resource": "*",
+            "Condition": {
+                "StringEqualsIfExists": {
+                    "iam:PassedToService": [
+                        "ec2.amazonaws.com",
+                        "eks.amazonaws.com",
+                        "ecs-tasks.amazonaws.com"
+                    ]
+                }
+            }
+        },
+        {
+            "Sid": "SafeCreateSLR",
+            "Effect": "Allow",
+            "Action": "iam:CreateServiceLinkedRole",
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "iam:AWSServiceName": [
+                        "eks.amazonaws.com",
+                        "autoscaling.amazonaws.com",
+                        "spot.amazonaws.com"
+                    ]
+                }
+            }
+        },
+        {
+            "Sid": "AllowECRandTagPolicy",
+            "Effect": "Allow",
+            "Action": [
+                "ecr:*",
+                "iam:TagRole",
+                "iam:CreatePolicy"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

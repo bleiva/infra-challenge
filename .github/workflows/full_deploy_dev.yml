@@ -1,0 +1,110 @@
+name: "[DEV] Orchestrate Full Deploy"
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker image tag"
+        required: false
+        default: "latest"
+
+jobs:
+  orchestrate:
+    name: Orchestrate full deployment
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      OWNER: ${{ github.repository_owner }}
+      REPO: ${{ github.event.repository.name }}
+      IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate GitHub CLI
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Trigger Terraform Apply
+        run: |
+          echo "📦 Triggering Terraform Apply..."
+          gh workflow run tf-apply-dev.yml --ref main
+          sleep 10
+
+          echo "⌛ Waiting for Terraform Apply to complete..."
+          while true; do
+            RUN=$(gh run list --workflow=tf-apply-dev.yml --limit=1 --json status,conclusion -q '.[0]')
+            STATUS=$(echo "$RUN" | jq -r '.status')
+            CONCLUSION=$(echo "$RUN" | jq -r '.conclusion')
+
+            echo "Terraform status: $STATUS ($CONCLUSION)"
+            if [[ "$STATUS" == "completed" ]]; then
+              if [[ "$CONCLUSION" != "success" ]]; then
+                echo "❌ Terraform Apply failed!"
+                exit 1
+              fi
+              break
+            fi
+            sleep 60
+          done
+
+      - name: Trigger Kubernetes Apply
+        run: |
+          echo "🚀 Triggering Kubernetes Apply..."
+          gh workflow run k8s-apply-dev.yml --ref main
+          sleep 10
+
+          echo "⌛ Waiting for Kubernetes Apply to complete..."
+          while true; do
+            RUN=$(gh run list --workflow=k8s-apply-dev.yml --limit=1 --json status,conclusion -q '.[0]')
+            STATUS=$(echo "$RUN" | jq -r '.status')
+            CONCLUSION=$(echo "$RUN" | jq -r '.conclusion')
+
+            echo "Kubernetes status: $STATUS ($CONCLUSION)"
+            if [[ "$STATUS" == "completed" ]]; then
+              if [[ "$CONCLUSION" != "success" ]]; then
+                echo "❌ Kubernetes Apply failed!"
+                exit 1
+              fi
+              break
+            fi
+            sleep 60
+          done
+
+      - name: Trigger Build & Deploy App
+        run: |
+          echo "🛠️ Triggering Build & Deploy App with tag: $IMAGE_TAG"
+          gh workflow run docker-deploy-dev.yml --ref main -f image_tag=$IMAGE_TAG
+          sleep 10
+
+          echo "⌛ Waiting for Build & Deploy App to complete..."
+          while true; do
+            RUN=$(gh run list --workflow=docker-deploy-dev.yml --limit=1 --json status,conclusion -q '.[0]')
+            STATUS=$(echo "$RUN" | jq -r '.status')
+            CONCLUSION=$(echo "$RUN" | jq -r '.conclusion')
+
+            echo "App Deploy status: $STATUS ($CONCLUSION)"
+            if [[ "$STATUS" == "completed" ]]; then
+              if [[ "$CONCLUSION" != "success" ]]; then
+                echo "❌ App Build & Deploy failed!"
+                exit 1
+              fi
+              break
+            fi
+            sleep 60
+          done
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region ${{ vars.AWS_REGION }} --name ${{ vars.EKS_CLUSTER_NAME }}
+
+      - name: Show application URL
+        run: |
+          HOSTNAME=$(kubectl get svc traefik -n kube-system -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          echo "✅ The app is available at: http://$HOSTNAME"

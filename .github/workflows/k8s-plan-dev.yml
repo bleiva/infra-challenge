@@ -1,0 +1,133 @@
+name: "[DEV] Kubernetes Plan"
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'charts/**'
+      - '.github/workflows/k8s-*.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  k8s-plan-dev:
+    name: k8s plan dev
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.ACCOUNT_ID }}:role/github-actions-oidc-role
+          aws-region: ${{ vars.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - name: Update kubeconfig for EKS
+        run: aws eks update-kubeconfig --region ${{ vars.AWS_REGION }} --name ${{ vars.EKS_CLUSTER_NAME }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install Helm Diff plugin
+        run: |
+          helm plugin install https://github.com/databus23/helm-diff || true
+
+      - name: Add Helm Repos
+        run: |
+          helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ || true
+          helm repo add traefik https://helm.traefik.io/traefik
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+
+      - name: Update kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          aws eks update-kubeconfig \
+          --region $AWS_REGION \
+          --name $EKS_CLUSTER_NAME \
+          --kubeconfig $HOME/.kube/config
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+          
+      - name: Verify kubectl access
+        run: kubectl get nodes
+
+      - name: Plan Metrics Server install
+        id: diff-metrics
+        run: |
+          helm diff upgrade metrics-server metrics-server/metrics-server \
+            --namespace kube-system \
+            --install || true
+
+      - name: Plan Traefik install
+        id: diff-traefik
+        run: |
+          helm diff upgrade traefik traefik/traefik \
+            --namespace kube-system \
+            --install || true
+
+      - name: Plan Prometheus & Grafana install
+        id: diff-monitoring
+        run: |
+          helm diff upgrade monitoring prometheus-community/kube-prometheus-stack \
+            --namespace monitoring \
+            --install || true
+
+      - name: Plan App Deployment
+        id: diff-app
+        run: |
+          helm dependency update charts/hello-python-chart
+          helm diff upgrade hello-python charts/hello-python-chart \
+            --namespace default \
+            --install || true
+
+      - name: Comment Helm Plan Summary on PR
+        uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            ## 📊 Helm Plan Summary
+
+            <details><summary>✏️ metrics-server</summary>
+
+            ```diff
+            ${{ steps.diff-metrics.outputs.stdout }}
+            ```
+
+            </details>
+
+            <details><summary>✏️ traefik</summary>
+
+            ```diff
+            ${{ steps.diff-traefik.outputs.stdout }}
+            ```
+
+            </details>
+
+            <details><summary>✏️ prometheus & grafana</summary>
+
+            ```diff
+            ${{ steps.diff-monitoring.outputs.stdout }}
+            ```
+
+            </details>
+
+            <details><summary>✏️ hello-python app</summary>
+
+            ```diff
+            ${{ steps.diff-app.outputs.stdout }}
+            ```
+
+            </details>
