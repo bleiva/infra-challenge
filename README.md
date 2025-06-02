@@ -100,12 +100,13 @@ The Kubernetes cluster includes optional and essential components:
 CI/CD is powered by **GitHub Actions**, split by purpose:
 
 - **Terraform Plan** (on PR)
-- **Terraform Apply** (manual)
+- **Terraform Apply** (push to main/manual)
 - **K8s Plan** (on PR)
-- **K8s Apply** (manual)
+- **K8s Apply** (push to main/manual)
 - **Full Deploy** (recommended: deploys infra, k8s, and app)
+- **Build & Deploy App** (push to main/manual)
 
-Each workflow is documented in [GitHub Actions Readme](.github/README.md).
+Each workflow is documented in [GitHub Actions Readme](.github/workflows/README.md).
 
 ---
 
