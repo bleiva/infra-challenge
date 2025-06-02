@@ -67,6 +67,6 @@ tf/
 ---
 
 ## Requirements
-- Terraform ≥ 1.3
+- Terraform ≥ 1.10
 - AWS CLI configured
-- S3 bucket and DynamoDB table (for locking) pre-created
+- S3 bucket
